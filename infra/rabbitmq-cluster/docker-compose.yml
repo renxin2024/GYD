@@ -1,0 +1,99 @@
+# RabbitMQ 3 节点集群 —— GYD 系列共享中间件
+#
+# 用途：验证「多副本」类语义。单节点 broker 无法回答这些问题——
+#   - quorum queue 的副本数、leader 选举、多数派可用 / 少数派拒写
+#   - 节点宕机后队列是否还能读写、消息是否还在
+# 后续讲一致性协议、副本同步的文章也会复用这个三节点环境。
+#
+# 使用：
+#   cd infra/rabbitmq-cluster
+#   docker compose up -d          # 启动三个节点（各自独立，尚未组集群）
+#   ./join-cluster.sh             # 让 rabbitmq2 / rabbitmq3 加入 rabbitmq1
+#   docker compose down           # 停止（数据保留在命名卷）
+#   docker compose down -v        # 停止并清空数据（下次需重新 join）
+#
+# 端口（刻意与单节点的 infra/rabbitmq 错开，可同时运行）：
+#   rabbitmq1  AMQP 5673  控制台 15673
+#   rabbitmq2  AMQP 5674  控制台 15674
+#   rabbitmq3  AMQP 5675  控制台 15675
+# 控制台账号：admin / admin123
+#
+# 说明：账号密码仅用于本地开发，切勿照搬到生产。
+# 国内拉取镜像慢时，可先从镜像源拉取再打回官方 tag：
+#   docker pull docker.m.daocloud.io/library/rabbitmq:4.3.5-management
+#   docker tag  docker.m.daocloud.io/library/rabbitmq:4.3.5-management rabbitmq:4.3.5-management
+
+name: gyd-rabbitmq-cluster
+
+x-rabbitmq-node: &rabbitmq-node
+  image: rabbitmq:4.3.5-management
+  restart: unless-stopped
+  environment:
+    RABBITMQ_DEFAULT_USER: admin
+    RABBITMQ_DEFAULT_PASS: admin123
+    RABBITMQ_DEFAULT_VHOST: /
+    # 三个节点必须共用同一个 Erlang cookie，否则互相不认
+    RABBITMQ_ERLANG_COOKIE: gyd-cluster-cookie
+    # 集群内节点用短名互访，与 hostname / service 名保持一致
+    RABBITMQ_USE_LONGNAME: "false"
+    # 节点故障检测默认要 60 秒（net_ticktime=60）才能判定对端下线，
+    # 「停掉一个节点看多数派行为」这类实验等不起，压到 10 秒。
+    # 仅本地实验环境使用，生产不要照搬这么激进的取值。
+    RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-kernel net_ticktime 10"
+  networks:
+    - gyd-cluster
+  healthcheck:
+    test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 25s
+
+services:
+  rabbitmq1:
+    <<: *rabbitmq-node
+    container_name: gyd-rabbitmq1
+    hostname: rabbitmq1
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    volumes:
+      - rabbitmq1-data:/var/lib/rabbitmq
+
+  rabbitmq2:
+    <<: *rabbitmq-node
+    container_name: gyd-rabbitmq2
+    hostname: rabbitmq2
+    ports:
+      - "5674:5672"
+      - "15674:15672"
+    volumes:
+      - rabbitmq2-data:/var/lib/rabbitmq
+    depends_on:
+      rabbitmq1:
+        condition: service_healthy
+
+  rabbitmq3:
+    <<: *rabbitmq-node
+    container_name: gyd-rabbitmq3
+    hostname: rabbitmq3
+    ports:
+      - "5675:5672"
+      - "15675:15672"
+    volumes:
+      - rabbitmq3-data:/var/lib/rabbitmq
+    depends_on:
+      rabbitmq1:
+        condition: service_healthy
+
+networks:
+  gyd-cluster:
+    name: gyd-rabbitmq-cluster-net
+
+volumes:
+  rabbitmq1-data:
+    name: gyd-rabbitmq1-data
+  rabbitmq2-data:
+    name: gyd-rabbitmq2-data
+  rabbitmq3-data:
+    name: gyd-rabbitmq3-data

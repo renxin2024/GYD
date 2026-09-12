@@ -1,0 +1,45 @@
+# RabbitMQ —— GYD 系列共享中间件
+#
+# 属仓库级基础设施，被多篇文章共用，不隶属于任何单篇的代码目录。
+#
+# 使用：
+#   cd infra/rabbitmq
+#   docker compose up -d        # 启动
+#   docker compose down         # 停止（数据保留在命名卷）
+#   docker compose down -v      # 停止并清空数据
+#
+# 控制台：http://localhost:15672   （admin / admin123）
+# AMQP  ：amqp://admin:admin123@localhost:5672
+#
+# 说明：账号密码仅用于本地开发，切勿照搬到生产。
+# 国内拉取镜像慢时，可先从镜像源拉取再打回官方 tag：
+#   docker pull docker.m.daocloud.io/library/rabbitmq:4.3.5-management
+#   docker tag  docker.m.daocloud.io/library/rabbitmq:4.3.5-management rabbitmq:4.3.5-management
+
+name: gyd-rabbitmq
+
+services:
+  rabbitmq:
+    image: rabbitmq:4.3.5-management
+    container_name: gyd-rabbitmq
+    hostname: gyd-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"     # AMQP 0-9-1 协议端口
+      - "15672:15672"   # 管理控制台
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  rabbitmq-data:
+    name: gyd-rabbitmq-data
