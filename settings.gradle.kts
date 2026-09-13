@@ -12,3 +12,4 @@ pluginManagement {
 rootProject.name = "gyd"
 
 include("c01-mq-reliable-delivery")
+include("c02-reconciliation")
