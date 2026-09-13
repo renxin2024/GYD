@@ -6,6 +6,7 @@ import com.rabbitmq.client.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 订单消息消费者。
@@ -85,29 +87,51 @@ public class OrderConsumer {
             } else {
                 log.error("[consumer] 重试 {} 次仍失败，转入死信队列: orderId={}, 累计投递 {} 次",
                         MAX_RETRY, message.orderId(), attempt);
-                // 用尽重试：显式投到最终死信交换机，再 ack 掉原消息。
+                // 用尽重试：显式投到最终死信交换机，确认转发成功才 ack 掉原消息。
                 // 这里不能再 nack——本队列的死信出口是重试交换机，会再次进入重试循环。
-                rabbitTemplate.convertAndSend(
-                        RabbitMqConfig.DEAD_LETTER_EXCHANGE,
-                        RabbitMqConfig.DEAD_LETTER_ROUTING_KEY,
-                        message,
-                        m -> {
-                            m.getMessageProperties().setHeader("x-gyd-attempts", attempt);
-                            return m;
-                        });
-                channel.basicAck(deliveryTag, false);
+                forwardToDeadLetter(message, channel, deliveryTag, attempt);
             }
         }
     }
 
-    @RabbitListener(queues = RabbitMqConfig.DEAD_LETTER_QUEUE)
-    public void onDeadLetter(OrderMessage message,
-                             Channel channel,
-                             @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag,
-                             @Headers Map<String, Object> headers) throws IOException {
-        log.warn("[consumer] 收到死信，等待人工或定时任务介入: orderId={}, 累计处理 {} 次",
-                message.orderId(), headers.get("x-gyd-attempts"));
-        channel.basicAck(deliveryTag, false);
+    /**
+     * 用尽重试后的收尾：把消息显式投到最终死信交换机，确认转发成功之后才 ack 原消息。
+     *
+     * {@code convertAndSend} 返回不代表死信队列已经收到消息；如果随后路由失败、连接
+     * 故障或 Broker 拒绝，原消息却已经 ack，就失去了恢复来源。所以这里同步等
+     * {@link CorrelationData} 的 future，并同时检查 return——不可路由时 confirm 也会 ack，
+     * 只查 ack 会把「转发进了死胡同」当成「转发成功」。
+     *
+     * 转发失败时不 ack，改为 requeue 回原队列，等下一次投递再试转发，消息不丢。
+     */
+    private void forwardToDeadLetter(OrderMessage message, Channel channel,
+                                     long deliveryTag, int attempt) throws IOException {
+        CorrelationData correlationData = new CorrelationData();
+        rabbitTemplate.convertAndSend(
+                RabbitMqConfig.DEAD_LETTER_EXCHANGE,
+                RabbitMqConfig.DEAD_LETTER_ROUTING_KEY,
+                message,
+                m -> {
+                    m.getMessageProperties().setHeader("x-gyd-attempts", attempt);
+                    return m;
+                },
+                correlationData);
+        try {
+            CorrelationData.Confirm confirm = correlationData.getFuture().get(5, TimeUnit.SECONDS);
+            if (confirm.ack() && correlationData.getReturned() == null) {
+                channel.basicAck(deliveryTag, false);
+            } else {
+                log.error("[consumer] 死信转发未确认（ack={}, returned={}），消息重投: orderId={}",
+                        confirm.ack(), correlationData.getReturned() != null, message.orderId());
+                channel.basicNack(deliveryTag, false, true);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            channel.basicNack(deliveryTag, false, true);
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException e) {
+            log.error("[consumer] 等待死信确认异常，消息重投: orderId={}", message.orderId(), e);
+            channel.basicNack(deliveryTag, false, true);
+        }
     }
 
     /**

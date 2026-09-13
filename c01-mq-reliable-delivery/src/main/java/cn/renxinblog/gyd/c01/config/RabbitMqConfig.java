@@ -136,6 +136,9 @@ public class RabbitMqConfig {
 
     @Bean
     public Queue deadLetterQueue() {
+        // 最终死信队列默认不挂消费者：消息到这里是「终点」，留在队列里等待人工或
+        // 定时任务介入。若由消费者自动 ack，失败任务就被消费掉了，等于丢掉了
+        // 唯一可查的失败现场。要观察死信，用 rabbitmqctl list_queues 看队列深度即可。
         return QueueBuilder.durable(DEAD_LETTER_QUEUE).build();
     }
 

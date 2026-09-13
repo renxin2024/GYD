@@ -60,6 +60,12 @@ public class OrderProducer {
         if (!confirm.ack()) {
             throw new IllegalStateException("Broker 未确认消息: " + confirm.reason());
         }
+        // 不可路由时 confirm 依然 ack，此时消息被 return 退回、并未进队列。
+        // 只查 ack 会把「路由不到任何队列」当成「发送成功」，必须再查 return。
+        if (correlationData.getReturned() != null) {
+            throw new IllegalStateException(
+                    "消息未能路由到队列: " + correlationData.getReturned().getReplyText());
+        }
         log.info("[producer] Broker 已确认接收: orderId={}", message.orderId());
     }
 

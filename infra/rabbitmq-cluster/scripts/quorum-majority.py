@@ -251,6 +251,11 @@ def main():
     ok, err = publish(NAME2PORT[probe], "minority", 1)
     log(f"  投递成功 {ok} 条，耗时 {time.time() - t0:.1f}s")
     log(f"  {err}")
+    # 断言这是「明确的 NACK」而非超时/结果未知：只有 pika 在确认阶段收到 NackError，
+    # 才能断定这条消息从未进入队列。若这里出现别的错误类型，说明少数派期间的表现
+    # 与预期不符，实验结论需要人工复核，而不是照印「被 NACK」。
+    assert ok == 0 and "NackError" in err, \
+        f"期望少数派期间投递被明确 NACK，实际 ok={ok}, err={err}"
 
     # ---------- STEP 7 ----------
     log("\n[STEP 7] 恢复被停的节点，看队列是否自愈")
@@ -266,7 +271,12 @@ def main():
     log(f"  投递成功 {ok} 条  {err}")
     got, _ = drain(main_port)
     log(f"  恢复后实际取回 {len(got)} 条: {got}")
-    log("  ↑ 只有 after-recovery 那 1 条；少数派期间被 NACK 的消息没有留在队列里")
+    # 断言恢复后取回的应该且仅应该是 after-recovery 那 1 条：
+    # 少数派期间被明确 NACK 的 minority 从未入队，不应残留。
+    # 不再硬编码结论——取回的身份、数量都来自 drain 的真实结果，对不上就立刻失败。
+    assert got == ["after-recovery"], \
+        f"期望恢复后只取回 after-recovery 1 条，实际 {got}"
+    log("  ↑ 断言通过：只有 after-recovery 那 1 条；少数派期间被 NACK 的消息没有留在队列里")
 
     # ---------- 清理 ----------
     log("\n[清理] 删除实验拓扑")
