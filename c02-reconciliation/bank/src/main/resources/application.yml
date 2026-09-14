@@ -1,0 +1,24 @@
+# GYD C02 跨行清算对账 —— 银行服务默认配置（公共部分）
+# 两个 profile（bank-a / bank-b）通过 application-{profile}.yml 覆盖端口、库名、银行代码。
+
+spring:
+  application:
+    name: gyd-c02-bank
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: admin
+    password: admin123
+    virtual-host: /
+    listener:
+      simple:
+        prefetch: 10

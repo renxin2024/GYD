@@ -12,4 +12,12 @@ pluginManagement {
 rootProject.name = "gyd"
 
 include("c01-mq-reliable-delivery")
+
+// c02：一篇文 = 一个聚合目录，下面按「进程」再分子模块（模块边界 = 进程边界）。
+// 子模块目录刻意不再带 c02- 前缀：外层已经有 c02-reconciliation/，再带一次会让
+// IDEA 生成出 gyd.c02-reconciliation.c02-bank 这种名字，c02 出现两次。
+// 详见 c02-reconciliation/build.gradle.kts 顶部说明。
 include("c02-reconciliation")
+include("c02-reconciliation:shared")
+include("c02-reconciliation:bank")
+include("c02-reconciliation:settlement")

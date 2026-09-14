@@ -1,8 +1,13 @@
 -- PostgreSQL 初始化：为 GYD C02 对账 demo 创建三个独立数据库
--- 注意：CREATE DATABASE 不能在事务块中执行（docker-entrypoint-initdb.d 默认在事务中运行）
--- 所以这里需要每个 CREATE DATABASE 单独提出来。但 Postgres Alpine + init 脚本的多语句逻辑
--- 我们简化：创建一个 gyd_c02 数据库，三个表分在不同的 schema 里。
--- （demo 阶段不追求完全隔离的多数据库，schema 级别隔离足够演示对账）
+--
+-- 为什么是三个独立库、而不是一个库分三张表：
+-- 「三方各自持有账本、互相看不到对方的数据」是对账能成立的前提。demo 里用独立数据库
+-- 把这个边界做实——结算服务连 gyd_c02_settlement，工行连 gyd_c02_bank_a，
+-- 建行连 gyd_c02_bank_b，谁都查不到别人库里的分录，只能像生产环境那样走 REST 接口拉。
+--
+-- 注意：CREATE DATABASE 不能在事务块中执行。Postgres 官方镜像对
+-- docker-entrypoint-initdb.d 下的 .sql 是逐条执行、不包在一个事务里的，
+-- 所以下面三条 CREATE DATABASE 可以正常建库。
 
 CREATE DATABASE gyd_c02_settlement;
 CREATE DATABASE gyd_c02_bank_a;

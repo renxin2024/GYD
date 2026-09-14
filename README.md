@@ -37,7 +37,8 @@ Gradle 8.14.2 是 Spring Boot 4 的最低兼容线（Boot 4 要求 Gradle 8.14+ 
 | 目录 | 对应文章 | 主题 |
 |------|---------|------|
 | [`c01-mq-reliable-delivery`](c01-mq-reliable-delivery) | 第 1 篇 | 消息队列的可靠投递与可靠消费 |
-| [`infra`](infra) | — | 系列共享中间件（RabbitMQ 等，不属于任何单篇） |
+| [`c02-reconciliation`](c02-reconciliation) | 第 2 篇 | 跨行清算对账：三方核对、差异分级、冲正 |
+| [`infra`](infra) | — | 系列共享中间件（RabbitMQ、PostgreSQL 等，不属于任何单篇） |
 
 `cXX-<slug>/` 只放**单篇文章的演示代码**；RabbitMQ、Redis、Kafka 这类被多篇复用的组件放仓库级的 [`infra/`](infra)，避免归属错乱和端口冲突。
 
@@ -277,7 +278,7 @@ Spring Boot 4 相对 3.x 是**大版本重构**，本仓库的构建配置按新
 
 - starter 改名：`spring-boot-starter-web` → **`spring-boot-starter-webmvc`**；`aop` → `aspectj`、`json` → `jackson`、`oauth2-client` → `security-oauth2-client` 等，**需逐个对照 BOM，不能套规则**。
 - 测试 starter 按技术拆分，如 `spring-boot-starter-webmvc-test`（会传递引入 `spring-boot-starter-test`）。
-- 自动配置拆成 47 个模块，包路径整体搬家（`org.springframework.boot.autoconfigure.jms` → `org.springframework.boot.jms.autoconfigure`）。
+- 自动配置拆成 47 个模块，包路径整体搬家（`org.springframework.boot.autoconfigure.jms` → `org.springframework.boot.jms.autoconfigure`）。常用注解跟着搬：`@EntityScan` 从 `org.springframework.boot.autoconfigure.domain` 搬到 **`org.springframework.boot.persistence.autoconfigure`**（c02 拆模块时踩过）。
 - Jackson 升到 3.0：groupId 为 `tools.jackson`，注解包名仍是 `com.fasterxml.jackson.core`。
 - 不再支持 Undertow（未实现 Servlet 6.1），默认 Tomcat 11。
 - 测试中 `@MockBean` → `@MockitoBean`。

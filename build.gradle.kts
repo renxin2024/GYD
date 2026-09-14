@@ -5,7 +5,10 @@ plugins {
     id("io.spring.dependency-management") version "1.1.7" apply false
 }
 
-allprojects {
+// 用 subprojects 而不是 allprojects：根工程自己不写代码、不发包，拿到 group 只会让
+// IDEA 多生成一个「<group>.<工程名>」形态的模块（cn.renxinblog.gyd.gyd），和其余
+// 「gyd.<路径>」形态的模块命名对不上。GYA-Java 的根工程本就没有 group，两侧行为一致。
+subprojects {
     group = "cn.renxinblog.gyd"
     version = "1.0.0"
 

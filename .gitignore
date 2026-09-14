@@ -23,3 +23,7 @@ __pycache__/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# --- demo 运行产物（start.sh 写日志、记 pid；实验脚本落实测输出）---
+logs/
+.pids/
