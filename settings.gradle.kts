@@ -21,3 +21,8 @@ include("c02-reconciliation")
 include("c02-reconciliation:shared")
 include("c02-reconciliation:bank")
 include("c02-reconciliation:settlement")
+
+// 前置篇：RabbitMQ 的架构与特性。**刻意不占 cXX 编号** —— 它是消息队列这条线的铺垫篇，
+// 排在 c01（消息的可靠投递与可靠消费）之前，在系列里没有序号。同样用裸客户端 amqp-client，
+// 理由见该模块 build.gradle.kts 顶部。
+include("rabbitmq-architecture")
