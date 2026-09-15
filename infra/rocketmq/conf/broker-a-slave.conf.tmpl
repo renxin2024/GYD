@@ -1,0 +1,23 @@
+# broker-a 从节点（brokerId=1）
+# 本文件是模板：brokerIP1 的值由 scripts/render-conf.sh 按当前宿主 IP 渲染。
+brokerIP1 = __HOST_IP__
+
+brokerClusterName = gyd-rocketmq-cluster
+brokerName = broker-a
+brokerId = 1
+
+# 从节点角色固定 SLAVE；复制方向是从节点主动连主节点的 HA 端口拉数据，
+# 所以主节点的 haListenPort 必须能被从节点访问到（compose 里已暴露）。
+brokerRole = SLAVE
+flushDiskType = ASYNC_FLUSH
+
+listenPort = 10921
+haListenPort = 10922
+
+namesrvAddr = namesrv:9876
+
+autoCreateTopicEnable = true
+autoCreateSubscriptionGroup = true
+
+storePathRootDir = /home/rocketmq/store
+storePathCommitLog = /home/rocketmq/store/commitlog

@@ -22,6 +22,10 @@ include("c02-reconciliation:shared")
 include("c02-reconciliation:bank")
 include("c02-reconciliation:settlement")
 
+// c03：RocketMQ 架构与机制。用裸客户端（不是 rocketmq-spring-boot-starter），
+// 客户端与服务端 apache/rocketmq:4.9.7 严格同版本 —— 理由见该模块 build.gradle.kts 顶部。
+include("c03-rocketmq-architecture")
+
 // 前置篇：RabbitMQ 的架构与特性。**刻意不占 cXX 编号** —— 它是消息队列这条线的铺垫篇，
 // 排在 c01（消息的可靠投递与可靠消费）之前，在系列里没有序号。同样用裸客户端 amqp-client，
 // 理由见该模块 build.gradle.kts 顶部。

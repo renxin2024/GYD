@@ -1,0 +1,21 @@
+# broker-b 从节点（brokerId=1）
+# 本文件是模板：brokerIP1 的值由 scripts/render-conf.sh 按当前宿主 IP 渲染。
+brokerIP1 = __HOST_IP__
+
+brokerClusterName = gyd-rocketmq-cluster
+brokerName = broker-b
+brokerId = 1
+
+brokerRole = SLAVE
+flushDiskType = ASYNC_FLUSH
+
+listenPort = 10941
+haListenPort = 10942
+
+namesrvAddr = namesrv:9876
+
+autoCreateTopicEnable = true
+autoCreateSubscriptionGroup = true
+
+storePathRootDir = /home/rocketmq/store
+storePathCommitLog = /home/rocketmq/store/commitlog

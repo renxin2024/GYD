@@ -1,0 +1,4 @@
+# conf/*.conf 与 .host-ip 都是 render-conf.sh 按「当前宿主机 IP」生成的，
+# 属于本机产物，不入库。模板 *.conf.tmpl 才是版本管理的对象。
+conf/*.conf
+.host-ip

@@ -1,0 +1,38 @@
+# broker-a 主节点（brokerId=0）
+# 本文件是模板：brokerIP1 的值由 scripts/render-conf.sh 按当前宿主 IP 渲染。
+#
+# brokerIP1 是对外通告地址：客户端和从节点都按这个地址回来连。
+# 容器网络里的服务名只有容器之间能解析，宿主机解析不了，所以统一用宿主机局域网 IP：
+# 宿主上的客户端能到达，容器内的 HA 复制也能到达（容器 → 宿主 LAN IP 已验证可通）。
+brokerIP1 = __HOST_IP__
+
+brokerClusterName = gyd-rocketmq-cluster
+brokerName = broker-a
+brokerId = 0
+
+# 实验变量：想验证「主从同步双写」就用 SYNC_MASTER，想对比异步复制改 ASYNC_MASTER
+brokerRole = SYNC_MASTER
+# 实验变量：SYNC_FLUSH 每条消息都等落盘，ASYNC_FLUSH 交给 page cache
+flushDiskType = ASYNC_FLUSH
+
+# 端口规则见 docker-compose.yml：listenPort / listenPort-2 / listenPort+1 三件套
+listenPort = 10911
+haListenPort = 10912
+
+namesrvAddr = namesrv:9876
+
+# 本地实验免手工建 Topic，生产不要开
+autoCreateTopicEnable = true
+autoCreateSubscriptionGroup = true
+
+# SQL92 属性过滤的开关。默认 false 时，客户端用 MessageSelector.bySql(...) 订阅会直接失败：
+#   MQClientException: CODE: 1  DESC: The broker does not support consumer to filter message by SQL92
+# 注意它是**服务端**开关，改完必须重启 broker 才生效（客户端改什么都没用）。
+# 单纯按 tag 过滤不需要它 —— tag 的 hashcode 就存在 ConsumeQueue 条目的 20 字节里。
+#
+# 这里刻意留 false：demo 的 `filter-sql` 第一次跑就应该失败，用来证明「开关在哪一层」。
+# 想让它成功，把下面改成 true 再 `docker compose restart broker-a-master`。
+enablePropertyFilter = false
+
+storePathRootDir = /home/rocketmq/store
+storePathCommitLog = /home/rocketmq/store/commitlog

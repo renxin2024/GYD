@@ -1,0 +1,195 @@
+# RocketMQ 4.9.7 本地练习集群 —— GYD 系列共享中间件
+#
+# 默认只起 3 个容器（最小可用集群）：
+#   namesrv         NameServer，无状态注册中心
+#   broker-a-master 主节点（brokerId=0），消息写入都落这里
+#   broker-a-slave  从节点（brokerId=1），从主节点拉数据做副本
+#
+# 想再扩就加参数，不用改文件：
+#   ./scripts/up.sh         → 3 个容器（默认）
+#   ./scripts/up.sh b       → 再加 broker-b 组，共 5 个容器
+#
+# 只想跑单机（不要主从）？删掉 broker-a-slave 整个 service 即可，
+# 顺便把 conf/broker-a-slave.conf.tmpl 也删掉。
+#
+# 启动请用 ./scripts/up.sh，别直接 docker compose up：
+#  1) broker 配置里要写宿主机 IP（容器名宿主机解析不了），up.sh 会先按当前 IP 渲染；
+#  2) 数据卷是 Docker 新建的、属主 root，而镜像以 uid 3000 运行，up.sh 会先改属主。
+#
+# ── 为什么必须手改 JVM 参数 ────────────────────────────────────────────────
+# 官方 runserver.sh / runbroker.sh 按「物理内存的一半」自动推堆（上限 8g），
+# 本机 Docker VM 有 11.7G，推出来就是 -Xmx5g，broker 还会把
+# -XX:MaxDirectMemorySize 也设成 5g。JAVA_OPT_EXT 会追加在默认参数之后，
+# 同名参数后者生效，用它压到最小。
+#
+# ── 端口规则（宿主端口 == 容器端口，便于对照）────────────────────────────
+# 每个 broker 占 3 个连续端口，都以 listenPort 为基准：
+#   listenPort   客户端默认就用的端口（心跳、管理类请求、发送）
+#   listenPort-2 只在客户端**显式打开** VIP 开关后才用得上，默认配置下不需要。
+#                见 README「客户端有一个『端口减 2』的开关，默认是关的」。
+#                这里一起映射是为了让「打开开关」这条路径也可用。
+#   listenPort+1 HA 复制端口（从节点从这里拉数据）
+
+name: gyd-rocketmq
+
+x-namesrv: &namesrv
+  image: apache/rocketmq:4.9.7
+  restart: unless-stopped
+  # 镜像自带官方入口：首个参数 nameserver / broker
+  entrypoint: ["sh", "docker-entrypoint.sh"]
+  environment:
+    JAVA_OPT_EXT: "-server -Xms256m -Xmx256m -Xmn128m"
+  mem_limit: 512m
+  networks: [gyd-rmq]
+  healthcheck: &ns-health
+    test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/9876"]
+    interval: 5s
+    timeout: 3s
+    retries: 20
+    start_period: 10s
+
+x-broker: &broker
+  image: apache/rocketmq:4.9.7
+  restart: unless-stopped
+  entrypoint: ["sh", "docker-entrypoint.sh"]
+  environment:
+    # 给容器里的 mqadmin 用；broker 自身的注册地址写在 conf 里
+    NAMESRV_ADDR: "namesrv:9876"
+    JAVA_OPT_EXT: "-server -Xms384m -Xmx384m -Xmn192m -XX:MaxDirectMemorySize=256m"
+  # 384m 堆 + 直接内存 + 元空间，再给 commitlog 的 1G mmap 留出页缓存余量
+  mem_limit: 1g
+  # broker 默认把 GC 日志写在 /dev/shm（容器里默认只有 64M），放宽一点
+  shm_size: 128m
+  networks: [gyd-rmq]
+  depends_on:
+    namesrv:
+      condition: service_healthy
+
+services:
+
+  # ── NameServer：无状态注册中心 ────────────────────────────────────────
+  namesrv:
+    <<: *namesrv
+    container_name: gyd-rmq-namesrv
+    hostname: namesrv
+    command: ["nameserver"]
+    ports:
+      - "9876:9876"
+
+  # ── broker-a：主从一组 ────────────────────────────────────────────────
+  broker-a-master:
+    <<: *broker
+    container_name: gyd-rmq-broker-a-master
+    hostname: broker-a-master
+    command: ["broker", "-c", "/home/rocketmq/conf/broker.conf"]
+    ports:
+      - "10911:10911"   # listenPort
+      - "10909:10909"   # listenPort-2，客户端热路径
+      - "10912:10912"   # HA 复制端口
+    volumes:
+      - ./conf/broker-a-master.conf:/home/rocketmq/conf/broker.conf:ro
+      - broker-a-master-store:/home/rocketmq/store
+      - broker-a-master-logs:/home/rocketmq/logs
+    healthcheck: &health-10911
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/10911"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  broker-a-slave:
+    <<: *broker
+    container_name: gyd-rmq-broker-a-slave
+    hostname: broker-a-slave
+    command: ["broker", "-c", "/home/rocketmq/conf/broker.conf"]
+    ports:
+      - "10921:10921"   # listenPort
+      - "10919:10919"   # listenPort-2
+      - "10922:10922"   # HA 复制端口
+    volumes:
+      - ./conf/broker-a-slave.conf:/home/rocketmq/conf/broker.conf:ro
+      - broker-a-slave-store:/home/rocketmq/store
+      - broker-a-slave-logs:/home/rocketmq/logs
+    depends_on:
+      namesrv:
+        condition: service_healthy
+      broker-a-master:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/10921"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  # ── broker-b：第二个 broker 组，默认不启动 ────────────────────────────
+  # 用 ./scripts/up.sh b 启用。第二个组的用处是观察「同一个 Topic 的队列
+  # 分散到多个 master」「消费组跨 broker 重平衡」，练习部署用不上。
+  broker-b-master:
+    <<: *broker
+    profiles: ["b"]
+    container_name: gyd-rmq-broker-b-master
+    hostname: broker-b-master
+    command: ["broker", "-c", "/home/rocketmq/conf/broker.conf"]
+    ports:
+      - "10931:10931"   # listenPort
+      - "10929:10929"   # listenPort-2
+      - "10932:10932"   # HA 复制端口
+    volumes:
+      - ./conf/broker-b-master.conf:/home/rocketmq/conf/broker.conf:ro
+      - broker-b-master-store:/home/rocketmq/store
+      - broker-b-master-logs:/home/rocketmq/logs
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/10931"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  broker-b-slave:
+    <<: *broker
+    profiles: ["b"]
+    container_name: gyd-rmq-broker-b-slave
+    hostname: broker-b-slave
+    command: ["broker", "-c", "/home/rocketmq/conf/broker.conf"]
+    ports:
+      - "10941:10941"   # listenPort
+      - "10939:10939"   # listenPort-2
+      - "10942:10942"   # HA 复制端口
+    volumes:
+      - ./conf/broker-b-slave.conf:/home/rocketmq/conf/broker.conf:ro
+      - broker-b-slave-store:/home/rocketmq/store
+      - broker-b-slave-logs:/home/rocketmq/logs
+    depends_on:
+      namesrv:
+        condition: service_healthy
+      broker-b-master:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/10941"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+networks:
+  gyd-rmq:
+    name: gyd-rocketmq-net
+
+volumes:
+  broker-a-master-store:
+    name: gyd-rmq-broker-a-master-store
+  broker-a-slave-store:
+    name: gyd-rmq-broker-a-slave-store
+  broker-b-master-store:
+    name: gyd-rmq-broker-b-master-store
+  broker-b-slave-store:
+    name: gyd-rmq-broker-b-slave-store
+  broker-a-master-logs:
+    name: gyd-rmq-broker-a-master-logs
+  broker-a-slave-logs:
+    name: gyd-rmq-broker-a-slave-logs
+  broker-b-master-logs:
+    name: gyd-rmq-broker-b-master-logs
+  broker-b-slave-logs:
+    name: gyd-rmq-broker-b-slave-logs
