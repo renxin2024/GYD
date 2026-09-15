@@ -1,0 +1,10 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="c03-settlement 央行 (:18080)" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <module name="gyd.c03-reconciliation.settlement" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="cn.renxinblog.gyd.c03.settlement.SettlementApplication" />
+    <option name="PROGRAM_PARAMETERS" value="--server.port=18080" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

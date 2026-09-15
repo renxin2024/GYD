@@ -1,0 +1,16 @@
+# 收款行（bank-b / CCB）profile
+server:
+  port: 18082
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/gyd_c03_bank_b
+    username: gyd
+    password: gyd123
+    driver-class-name: org.postgresql.Driver
+
+gyd:
+  c03:
+    bank:
+      code: CCB
+      queue: gyd.c03.settlement.bank-b

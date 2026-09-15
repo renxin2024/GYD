@@ -36,13 +36,13 @@ Gradle 8.14.2 是 Spring Boot 4 的最低兼容线（Boot 4 要求 Gradle 8.14+ 
 
 | 目录 | 对应文章 | 主题 |
 |------|---------|------|
-| [`rabbitmq-architecture`](rabbitmq-architecture) | 前置篇 | RabbitMQ 的架构与特性：一条消息的一生 |
-| [`c01-mq-reliable-delivery`](c01-mq-reliable-delivery) | 第 1 篇 | 消息队列的可靠投递与可靠消费 |
-| [`c02-reconciliation`](c02-reconciliation) | 第 2 篇 | 跨行清算对账：三方核对、差异分级、冲正 |
-| [`c03-rocketmq-architecture`](c03-rocketmq-architecture) | 第 3 篇 | RocketMQ 的架构与机制：顺序、定时、事务、过滤是同一份 CommitLog 上的四个投影 |
+| [`c01-rabbitmq-architecture`](c01-rabbitmq-architecture) | 第 1 篇 | RabbitMQ 的架构与特性：一条消息的一生 |
+| [`c02-mq-reliable-delivery`](c02-mq-reliable-delivery) | 第 2 篇 | 消息队列的可靠投递与可靠消费 |
+| [`c03-reconciliation`](c03-reconciliation) | 第 3 篇 | 跨行清算对账：三方核对、差异分级、冲正 |
+| [`c04-rocketmq-architecture`](c04-rocketmq-architecture) | 第 4 篇 | RocketMQ 的架构与机制：顺序、定时、事务、过滤是同一份 CommitLog 上的四个投影 |
 | [`infra`](infra) | — | 系列共享中间件（RabbitMQ、RocketMQ、PostgreSQL 等，不属于任何单篇） |
 
-`cXX-<slug>/` 只放**单篇文章的演示代码**；RabbitMQ、Redis、Kafka 这类被多篇复用的组件放仓库级的 [`infra/`](infra)，避免归属错乱和端口冲突。前置篇的目录 [`rabbitmq-architecture/`](rabbitmq-architecture) 刻意不带 `cXX-` 前缀——它排在编号文章之前，在系列里没有序号。
+`cXX-<slug>/` 只放**单篇文章的演示代码**，编号就是文章在系列里的序号；RabbitMQ、Redis、Kafka 这类被多篇复用的组件放仓库级的 [`infra/`](infra)，避免归属错乱和端口冲突，`infra/` 不属于任何单篇，因此不带编号。
 
 ## 本地环境（RabbitMQ）
 
@@ -82,35 +82,35 @@ cd infra/rabbitmq && docker compose up -d && cd ../..
 # 2. 编译 + 跑测试
 ./gradlew build
 
-# 3. 只启动第 1 篇的演示应用
-./gradlew :c01-mq-reliable-delivery:bootRun
+# 3. 只启动第 2 篇（消息队列的可靠投递与可靠消费）的演示应用
+./gradlew :c02-mq-reliable-delivery:bootRun
 ```
 
 启动后有五个入口可以手工验证可靠的各个环节：
 
 ```bash
 # 自检
-curl http://localhost:8080/gyd/c01/ping
+curl http://localhost:8080/gyd/c02/ping
 # {"status":"ok"}
 
 # 1) 正常订单 → 被消费、ack，队列归零
-curl -X POST "http://localhost:8080/gyd/c01/order?orderId=order-1001&amount=199"
+curl -X POST "http://localhost:8080/gyd/c02/order?orderId=order-1001&amount=199"
 
 # 2) 会失败的订单（orderId 含 "fail"）→ nack 进重试队列，每 2s 重试一次，
 #    3 次重试用尽后转入死信队列，全程约 6s
-curl -X POST "http://localhost:8080/gyd/c01/order?orderId=order-fail-1002&amount=299"
+curl -X POST "http://localhost:8080/gyd/c02/order?orderId=order-fail-1002&amount=299"
 
 # 3) 路由到无人绑定的键 → 触发 return 回调，但 confirm 仍返回 ack
 #    （消息实际被丢弃，这是最容易被忽略的「静默丢消息」）
-curl -X POST "http://localhost:8080/gyd/c01/order/unroutable?orderId=order-3001"
+curl -X POST "http://localhost:8080/gyd/c02/order/unroutable?orderId=order-3001"
 
 # 4) 持久化探针：分别投一条持久化 / 非持久化消息到无消费者的队列，
 #    重启 broker 后对比数量
-curl -X POST "http://localhost:8080/gyd/c01/order/probe?id=p1&persistent=true"
-curl -X POST "http://localhost:8080/gyd/c01/order/probe?id=t1&persistent=false"
+curl -X POST "http://localhost:8080/gyd/c02/order/probe?id=p1&persistent=true"
+curl -X POST "http://localhost:8080/gyd/c02/order/probe?id=t1&persistent=false"
 
 # 5) 批量投递慢消息（orderId 前缀 slow，每条处理 200ms），用于观测 prefetch
-curl -X POST "http://localhost:8080/gyd/c01/order/burst?prefix=slow&count=50"
+curl -X POST "http://localhost:8080/gyd/c02/order/burst?prefix=slow&count=50"
 ```
 
 观察队列状态：
@@ -134,7 +134,7 @@ docker exec gyd-rabbitmq rabbitmqctl list_queues name messages messages_persiste
   consumer --publish--> order.dlx --order.dead--> order.dlq
 
 探针（无消费者，仅用于持久化实验）
-  producer → 默认交换机 --> gyd.c01.persist.probe
+  producer → 默认交换机 --> gyd.c02.persist.probe
 ```
 
 重试那一跳必须由 broker 的死信机制完成。原因是**只有被死信过的消息才会被 broker 追加 `x-death` 头**，而消费者正是靠它数出重试次数；若改成应用自己重发，新消息不带这个头，计数就断了。
@@ -150,21 +150,22 @@ docker exec gyd-rabbitmq rabbitmqctl list_queues name messages messages_persiste
 投递 `order-fail-retry-2` 后的真实日志：
 
 ```
-09:37:00.946  处理失败，2000ms 后重试（第 1/3 次）  x-death=(无)
-09:37:02.950  处理失败，2000ms 后重试（第 2/3 次）  x-death=retry.queue/expired ×1 + order.queue/rejected ×1
-09:37:04.953  处理失败，2000ms 后重试（第 3/3 次）  x-death=retry.queue/expired ×2 + order.queue/rejected ×2
-09:37:06.956  重试 3 次仍失败，转入死信队列（累计投递 4 次）
-09:37:06.959  收到死信，累计处理 4 次
+14:56:48.082  处理失败，2000ms 后重试（第 1/3 次）  x-death=(无)
+14:56:50.086  处理失败，2000ms 后重试（第 2/3 次）  x-death=retry.queue/expired ×1 + order.queue/rejected ×1
+14:56:52.090  处理失败，2000ms 后重试（第 3/3 次）  x-death=retry.queue/expired ×2 + order.queue/rejected ×2
+14:56:54.095  重试 3 次仍失败，转入死信队列（累计投递 4 次）
 ```
 
-相邻两次的间隔是 2004ms / 2003ms / 2003ms，与 `x-message-ttl=2000` 吻合。
+相邻两次的间隔是 2004ms / 2004ms / 2005ms，与 `x-message-ttl=2000` 吻合。
+
+消息随后落在 `gyd.c02.order.dlq` 里就停住了——这条队列刻意不挂消费者，失败现场要留给人工或定时任务，`list_queues` 看到的深度是 1。
 
 `x-death` 由 broker 维护，每次死信累加对应条目：
 
 ```
 x-death=[
-  {reason=expired,  count=2, queue=gyd.c01.order.retry.queue, routing-keys=[order.retry]},
-  {reason=rejected, count=2, queue=gyd.c01.order.queue,       routing-keys=[order.created]}
+  {reason=expired,  count=2, queue=gyd.c02.order.retry.queue, routing-keys=[order.retry]},
+  {reason=rejected, count=2, queue=gyd.c02.order.queue,       routing-keys=[order.created]}
 ]
 ```
 
@@ -174,7 +175,7 @@ x-death=[
 
 ### 2. 持久化：`confirm` 的 ack 不等于已落盘
 
-对无消费者的队列 `gyd.c01.persist.probe` 投递两条消息，**两条都收到 `confirm` 的 ack**：
+对无消费者的队列 `gyd.c02.persist.probe` 投递两条消息，**两条都收到 `confirm` 的 ack**：
 
 ```
 [producer] 已投递持久化探针: id=probe-persistent, deliveryMode=PERSISTENT(2)
@@ -200,16 +201,16 @@ x-death=[
 
 | prefetch | `messages_unacknowledged` 峰值 | 排空耗时 |
 |---|---|---|
-| 1 | **1** | ~10s |
-| 20 | **20** | ~10s |
+| 1 | **1** | 10.9s |
+| 20 | **20** | 10.6s |
 
 两次吞吐基本相同——瓶颈在消费处理本身，不在网络往返。差别在于**同时在途未确认的消息数**：若消费者在这一刻崩溃，`prefetch=1` 最多重投 1 条，`prefetch=20` 最多重投 20 条。这就是「提高并行度」在可靠消费上要付的代价。
 
 复现方式（不改配置文件，用环境变量覆盖）：
 
 ```bash
-SPRING_RABBITMQ_LISTENER_SIMPLE_PREFETCH=1  ./gradlew :c01-mq-reliable-delivery:bootRun
-SPRING_RABBITMQ_LISTENER_SIMPLE_PREFETCH=20 ./gradlew :c01-mq-reliable-delivery:bootRun
+SPRING_RABBITMQ_LISTENER_SIMPLE_PREFETCH=1  ./gradlew :c02-mq-reliable-delivery:bootRun
+SPRING_RABBITMQ_LISTENER_SIMPLE_PREFETCH=20 ./gradlew :c02-mq-reliable-delivery:bootRun
 ```
 
 ### 4. quorum queue：多数派在线才能写
@@ -280,7 +281,7 @@ Spring Boot 4 相对 3.x 是**大版本重构**，本仓库的构建配置按新
 
 - starter 改名：`spring-boot-starter-web` → **`spring-boot-starter-webmvc`**；`aop` → `aspectj`、`json` → `jackson`、`oauth2-client` → `security-oauth2-client` 等，**需逐个对照 BOM，不能套规则**。
 - 测试 starter 按技术拆分，如 `spring-boot-starter-webmvc-test`（会传递引入 `spring-boot-starter-test`）。
-- 自动配置拆成 47 个模块，包路径整体搬家（`org.springframework.boot.autoconfigure.jms` → `org.springframework.boot.jms.autoconfigure`）。常用注解跟着搬：`@EntityScan` 从 `org.springframework.boot.autoconfigure.domain` 搬到 **`org.springframework.boot.persistence.autoconfigure`**（c02 拆模块时踩过）。
+- 自动配置拆成 47 个模块，包路径整体搬家（`org.springframework.boot.autoconfigure.jms` → `org.springframework.boot.jms.autoconfigure`）。常用注解跟着搬：`@EntityScan` 从 `org.springframework.boot.autoconfigure.domain` 搬到 **`org.springframework.boot.persistence.autoconfigure`**（c03 拆模块时踩过）。
 - Jackson 升到 3.0：groupId 为 `tools.jackson`，注解包名仍是 `com.fasterxml.jackson.core`。
 - 不再支持 Undertow（未实现 Servlet 6.1），默认 Tomcat 11。
 - 测试中 `@MockBean` → `@MockitoBean`。

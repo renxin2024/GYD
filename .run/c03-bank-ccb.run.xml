@@ -1,0 +1,10 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="c03-bank 建行 (:18082)" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <module name="gyd.c03-reconciliation.bank" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="cn.renxinblog.gyd.c03.bank.BankApplication" />
+    <option name="PROGRAM_PARAMETERS" value="--spring.profiles.active=bank-b --server.port=18082" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

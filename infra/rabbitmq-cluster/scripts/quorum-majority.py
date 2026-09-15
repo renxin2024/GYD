@@ -2,7 +2,7 @@
 """
 实测：quorum queue 的多副本（Raft 多数派）行为。
 
-对应文章：GYD 第 1 篇《消息队列的可靠投递与可靠消费》第二节
+对应文章：GYD 第 2 篇《消息队列的可靠投递与可靠消费》第二节
 （解释「单机持久化挡不住机器级故障，要用 quorum queue」这句话到底什么意思）。
 
 要回答的问题：
@@ -47,8 +47,8 @@ DOCKER = os.environ.get("DOCKER_BIN") or shutil.which("docker") or "/usr/local/b
 HOST = "localhost"
 CRED = pika.PlainCredentials("admin", "admin123")
 
-QUEUE = "gyd.c01.quorum.demo"
-EXCHANGE = "gyd.c01.quorum.ex"
+QUEUE = "gyd.c02.quorum.demo"
+EXCHANGE = "gyd.c02.quorum.ex"
 ROUTING_KEY = "quorum.demo"
 
 NODES = [

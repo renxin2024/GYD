@@ -2,7 +2,7 @@
 """
 实测：per-message TTL（AMQP `expiration` 属性）在单队列中的「队头阻塞」。
 
-对应文章：GYD 第 1 篇《消息队列的可靠投递与可靠消费》第五节
+对应文章：GYD 第 2 篇《消息队列的可靠投递与可靠消费》第五节
 （解释「TTL 延迟重试为什么只能做固定间隔，做不了递增退避」）。
 
 要回答的问题：
@@ -53,7 +53,7 @@ def run_experiment(tag, plan, hold_s=9.0):
     """plan: [(label, ttl_ms), ...]，列表顺序即入队顺序。"""
     # 资源名带唯一后缀，保证脚本可重复运行（上一次中断留下的残留不会冲突）
     uniq = f"{int(time.time() * 1000)}"
-    base = f"gyd.c01.ttl.hol.{tag}.{uniq}"
+    base = f"gyd.c02.ttl.hol.{tag}.{uniq}"
     ex = f"{base}.ex"
     dlx = f"{base}.dlx"
     q = base
