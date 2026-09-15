@@ -39,7 +39,8 @@ Gradle 8.14.2 是 Spring Boot 4 的最低兼容线（Boot 4 要求 Gradle 8.14+ 
 | [`rabbitmq-architecture`](rabbitmq-architecture) | 前置篇 | RabbitMQ 的架构与特性：一条消息的一生 |
 | [`c01-mq-reliable-delivery`](c01-mq-reliable-delivery) | 第 1 篇 | 消息队列的可靠投递与可靠消费 |
 | [`c02-reconciliation`](c02-reconciliation) | 第 2 篇 | 跨行清算对账：三方核对、差异分级、冲正 |
-| [`infra`](infra) | — | 系列共享中间件（RabbitMQ、PostgreSQL 等，不属于任何单篇） |
+| [`c03-rocketmq-architecture`](c03-rocketmq-architecture) | 第 3 篇 | RocketMQ 的架构与机制：顺序、定时、事务、过滤是同一份 CommitLog 上的四个投影 |
+| [`infra`](infra) | — | 系列共享中间件（RabbitMQ、RocketMQ、PostgreSQL 等，不属于任何单篇） |
 
 `cXX-<slug>/` 只放**单篇文章的演示代码**；RabbitMQ、Redis、Kafka 这类被多篇复用的组件放仓库级的 [`infra/`](infra)，避免归属错乱和端口冲突。前置篇的目录 [`rabbitmq-architecture/`](rabbitmq-architecture) 刻意不带 `cXX-` 前缀——它排在编号文章之前，在系列里没有序号。
 

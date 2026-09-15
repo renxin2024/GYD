@@ -192,7 +192,7 @@ docker run --rm apache/rocketmq:4.9.7 sh mqadmin resetOffsetByTime \
 MQClientException: CODE: 1  DESC: The broker does not support consumer to filter message by SQL92
 ```
 
-它是**服务端**开关（客户端改什么都没用），改完必须重启 broker。本仓库默认已在 `conf/broker-a-master.conf.tmpl` 里打开——只按 tag 过滤不需要它，tag 的 hashcode 就存在 ConsumeQueue 的 20 字节条目里。
+它是**服务端**开关（客户端改什么都没用），改完必须重启 broker。本仓库把 `conf/broker-a-master.conf.tmpl` 里的 `enablePropertyFilter` **刻意留成 `false`**：`filter-sql` 示例第一次跑就该失败，用来证明这个开关在哪一层；想让它成功，改成 `true` 之后再重启 broker。只按 tag 过滤不需要它——tag 的 hashcode 就存在 ConsumeQueue 的 20 字节条目里。
 
 顺带一个反直觉的实测结果：`enablePropertyFilter` 打开后重启 broker，第一次发送可能撞上 `RemotingTooMuchRequestException: sendDefaultImpl call timeout`（客户端 3s 超时），再跑一次即正常——重启后的短暂状态，不是配置错。
 
