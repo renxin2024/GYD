@@ -1,6 +1,6 @@
 # c04-rocketmq-architecture —— 第四话配套代码
 
-对应文章：[第四话｜RocketMQ 的架构与机制：顺序、定时、事务、过滤是同一份 CommitLog 上的四个投影](https://zh.renxinblog.cn/post/gyd-c04-rocketmq-architecture/)
+对应文章：[第四话｜RocketMQ 4.x 的架构与机制：一条消息从发送到消费的全程](https://zh.renxinblog.cn/post/gyd-c04-rocketmq-architecture/)
 
 一条消息从生产到消费，要穿过寻址、发送、落盘与建索引、消费取数这几段路径。这个模块把文章里每一条结论
 都做成了可单独运行、可复跑的示例：正文只讲机制，实现、运行方式与**完整输出**放在这里。
@@ -55,19 +55,19 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home
 
 | 文章小节 | 示例名 | 这个示例做什么 |
 |---|---|---|
-| 一 | `route` | 拉路由：客户端默认间隔（路由刷新 / 心跳 / 位点持久化各是多少）、broker 通告的地址表、队列数 |
-| 一 | `vip` | VIP 通道对照：默认连哪个端口、开关打开后多连哪条、端口不可达时报什么异常。参数形如 `vip [on\|off] [发送前持有秒数] [发送后持有秒数]`，持有期间可以从外部认领这条进程的连接 |
-| 二 | `send` | 同步 / 异步 / 单向 / 批量四种发送，打印客户端四个发送默认值与重试白名单，并统计落点分布 |
-| 二 | `autocreate` | 发到一个不存在的主题：客户端先抛什么，以及自动建出来的队列数（对照显式建的主题） |
-| 二 | `failmode` | 单次发送的 `SendStatus`：配合停 / 起从节点，看状态码变了而调用方拿到的东西没变 |
-| 五 | `consume` | 并发消费：默认流控参数、8 条消息实际用到几个消费线程 |
-| 五 | `offsetprobe` | 位点窗口探针：`kill -9` 与 `shutdown()` 两种退出方式，对照 broker 上的位点与重启后重收的条数。参数形如 `offsetprobe <produce\|consume> <条数>` |
-| 六 | `ordered` | 顺序发送：同一业务键固定到同一队列，检查发送端只做了哪一件事 |
-| 六 | `orderly` | 顺序消费：同一队列的处理区间是否重叠（重叠 = 并发，不重叠 = 串行），以及每个队列用到几个线程 |
-| 七 | `filter-tag` | tag 过滤：订阅 `TAG-A` 时 `TAG-B` 有没有离开过 broker |
-| 七 | `filter-sql` | SQL92 属性过滤：开关关闭时订阅报什么错，打开后收到哪些 |
-| 八 | `delay` | 固定级延迟：5 个 delayLevel 的标称延迟 vs 实际收到时刻 |
-| 九 | `tx` | 事务消息：commit / rollback / unknow 三条路径 + 回查时的调用轨迹 |
+| 二 | `route` | 拉路由：客户端默认间隔（路由刷新 / 心跳 / 位点持久化各是多少）、broker 通告的地址表、队列数 |
+| 二 | `vip` | VIP 通道对照：默认连哪个端口、开关打开后多连哪条、端口不可达时报什么异常。参数形如 `vip [on\|off] [发送前持有秒数] [发送后持有秒数]`，持有期间可以从外部认领这条进程的连接 |
+| 三 | `send` | 同步 / 异步 / 单向 / 批量四种发送，打印客户端四个发送默认值与重试白名单，并统计落点分布 |
+| 三 | `autocreate` | 发到一个不存在的主题：显式查路由抛 `CODE=17`，真正 `send` 时走自动建、队列数多少（对照显式建的主题） |
+| 三 | `failmode` | 单次发送的 `SendStatus`：配合停 / 起从节点，看状态码变了而调用方拿到的东西没变 |
+| 七 | `consume` | 并发消费：默认流控参数、8 条消息实际用到几个消费线程 |
+| 七 | `offsetprobe` | 位点窗口探针：`kill -9` 与 `shutdown()` 两种退出方式，对照 broker 上的位点与重启后重收的条数。参数形如 `offsetprobe <produce\|consume> <条数>` |
+| 八 | `ordered` | 顺序发送：同一业务键固定到同一队列，检查发送端只做了哪一件事 |
+| 八 | `orderly` | 顺序消费：同一队列的处理区间是否重叠（重叠 = 并发，不重叠 = 串行），以及每个队列用到几个线程 |
+| 九 | `filter-tag` | tag 过滤：订阅 `TAG-A` 时 `TAG-B` 有没有离开过 broker |
+| 九 | `filter-sql` | SQL92 属性过滤：开关关闭时订阅报什么错，打开后收到哪些 |
+| 十 | `delay` | 离散级延迟：5 个 delayLevel 的标称延迟 vs 实际收到时刻 |
+| 十一 | `tx` | 事务消息：commit / rollback / unknown 三条路径 + 回查时的调用轨迹 |
 
 ## 本机受控实验（三个需要 docker 层操作的）
 
@@ -83,7 +83,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home
 
 文章正文只引用关键读数。下面是每个示例与实验的完整输出，按文章小节分组，便于对照复跑。
 
-**一｜客户端默认间隔与 broker 通告的地址表**
+**二｜客户端默认间隔与 broker 通告的地址表**
 
 ```
 [route] pollNameServerInterval   = 30000 ms   <- 路由刷新间隔
@@ -94,7 +94,7 @@ export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home
 [route] 注意：地址表里是 broker 自己通告的地址（brokerIP1），不是 NameServer 的地址
 ```
 
-**一｜VIP 通道 2×2 对照（阶段 A：10909 已映射）**
+**二｜VIP 通道 2×2 对照（阶段 A：10909 已映射）**
 
 ```
 [vip] 库默认 vipChannelEnabled = false
@@ -116,7 +116,7 @@ java  17125 ... TCP 192.168.31.132:54986->192.168.31.132:10911 (ESTABLISHED)
 java  17125 ... TCP 192.168.31.132:55020->192.168.31.132:10909 (ESTABLISHED)   ← 多出来的那条
 ```
 
-**一｜VIP 通道对照（阶段 B：10909 未映射）**
+**二｜VIP 通道对照（阶段 B：10909 未映射）**
 
 ```
 宿主侧 lsof -nP -iTCP:10909 -> 无任何监听
@@ -135,7 +135,7 @@ java  17125 ... TCP 192.168.31.132:55020->192.168.31.132:10909 (ESTABLISHED)   �
 > 那一版探测已从代码里删除，不作为证据；结论只依赖上面两条互相印证的事实（客户端明确报
 > `connect to …:10909 failed`，且同机同代码只改映射时能连上）。
 
-**二｜发送默认值、重试白名单与落点分布**
+**三｜发送默认值、重试白名单与落点分布**
 
 ```
 [send] 默认值: sendMsgTimeout=3000ms retryTimesWhenSendFailed=2 retryTimesWhenSendAsyncFailed=2
@@ -148,7 +148,7 @@ java  17125 ... TCP 192.168.31.132:55020->192.168.31.132:10909 (ESTABLISHED)   �
 [send] 批量 ×3 -> 单条 SendResult queueId=1 sendStatus=SEND_OK
 ```
 
-**二｜自动建主题：先报错的是客户端**
+**三｜自动建主题：显式查路由先抛 CODE=17**
 
 ```
 [autocreate] 发送前：拉 gyd-c03-autocreate-probe 的路由
@@ -159,7 +159,7 @@ java  17125 ... TCP 192.168.31.132:55020->192.168.31.132:10909 (ESTABLISHED)   �
 [autocreate] 对照：用 mqadmin updateTopic -w 4 显式建的 gyd-c03-send 是 write=4
 ```
 
-**二｜停掉从节点前后，单次发送的 `SendStatus` 与耗时**
+**三｜停掉从节点前后，单次发送的 `SendStatus` 与耗时**
 
 ```
 --- 1) 从节点在线 ---
@@ -173,7 +173,7 @@ java  17125 ... TCP 192.168.31.132:55020->192.168.31.132:10909 (ESTABLISHED)   �
 三次都没有抛异常、也没有触发重试（`retryAnotherBrokerWhenNotStoreOK=false`）。第 2 次连耗时都更短，
 说明既没有等待从节点，也没有重试——消息照样写进了主节点的 CommitLog。
 
-**三｜`store/` 的实际布局与文件大小**
+**四｜`store/` 的实际布局与文件大小**
 
 ```
 store/
@@ -191,7 +191,7 @@ consumequeue/ 下每个主题一个目录：OFFSET_MOVED_EVENT、RMQ_SYS_TRANS_H
 0000016 04 be 52 ae              00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
 ```
 
-**三｜8 字节第三字段按主题三义（磁盘巡检）**
+**五｜8 字节第三字段按主题三义（磁盘巡检）**
 
 ```
 RMQ_SYS_TRANS_HALF_TOPIC      queueId=0   第三字段 min=0              max=0               int32 量级
@@ -206,7 +206,7 @@ gyd-c03-delay                 queueId=1   第三字段 min=0              max=0 
 判据：普通主题的第三字段全在 int32 量级，延迟队列的全在 1.7×10¹² 量级。`"TAG-A"` 的 hashcode 是
 79581870。第三字段在 `RMQ_SYS_TRANS_HALF_TOPIC` 下是 0、在 `RMQ_SYS_TRANS_OP_HALF_TOPIC` 下是 100。
 
-**三｜CommitLog 里的多主题混写**
+**四｜CommitLog 里的多主题混写**
 
 ```
 解析出 110 条消息（未识别主题 0 条），解析到偏移 22330
@@ -216,14 +216,14 @@ gyd-c03-delay                 queueId=1   第三字段 min=0              max=0 
   → RMQ_SYS_TRANS_HALF_TOPIC → gyd-c03-tx → RMQ_SYS_TRANS_OP_HALF_TOPIC → gyd-c03-offset
 ```
 
-**三｜索引落后日志多少**
+**五｜索引落后日志多少**
 
 ```
 mqadmin brokerStatus → dispatchBehindBytes : 0
 broker 日志（定时任务打的，主从都会打）：dispatch behind commit log 0 bytes
 ```
 
-**四｜硬杀主节点（`ha-failover`）**
+**六｜硬杀主节点（`ha-failover`）**
 
 ```
 停机前：namesrv 看到 broker-a BID=0(10911) + BID=1(10921)
@@ -241,7 +241,7 @@ docker kill gyd-rmq-broker-a-master → exited，等 40s
 恢复后主从位点：master commitLogMaxOffset=22804，slave commitLogMaxOffset=22804
 ```
 
-**五｜消费侧默认流控**
+**七｜消费侧默认流控**
 
 ```
 [consume] 默认流控: consumeThreadMin=20 consumeThreadMax=20 pullThresholdForQueue=1000 条
@@ -252,7 +252,7 @@ docker kill gyd-rmq-broker-a-master → exited，等 40s
 [consume] 汇总: 收到 8 条, 覆盖队列 [0, 1, 3], 实际用到消费线程 8 个
 ```
 
-**五｜位点上报窗口：强杀 vs 优雅退出（`offsetprobe`）**
+**七｜位点上报窗口：强杀 vs 优雅退出（`offsetprobe`）**
 
 A 组（`kill -9`，距启动不到 5 秒，已消费 4 条）——kill 之后 broker 里的位点：
 
@@ -272,7 +272,7 @@ gyd-c03-offset      0     20              20                0      2026-09-14 16
 
 同组重启后收到 0 条。
 
-**五｜删主题不清位点**
+**七｜删主题不清位点**
 
 删掉并重建 `gyd-c03-order`（6 条消息，offset 0–5）之后，消费组的 `consumerOffset` 仍是 6，一次消费
 收到 **0 条**，不报任何错。用 `resetOffsetByTime` 把位点重置到 1970 之后重跑 `orderly`，收到 6 条。
@@ -282,7 +282,7 @@ docker run --rm apache/rocketmq:4.9.7 sh mqadmin resetOffsetByTime \
   -g <consumerGroup> -t <topic> -s "1970-01-01#00:00:00:000" -f true -n $(cat infra/rocketmq/.host-ip):9876
 ```
 
-**六｜顺序消费：处理区间不重叠（`orderly`）**
+**八｜顺序消费：处理区间不重叠（`orderly`）**
 
 ```
 [orderly] 开始处理 queueId=2 body=order-0 线程=ConsumeMessageThread_…_orderly_1 时刻=1789398118274
@@ -294,7 +294,7 @@ docker run --rm apache/rocketmq:4.9.7 sh mqadmin resetOffsetByTime \
 同一队列 7 条消息全部落在**同一个线程**上，前后区间首尾相接、不重叠。默认消费线程数是 20，
 顺序模式下真正跑着的只有一个。
 
-**七｜tag 过滤：`TAG-B` 从未离开 broker**
+**九｜tag 过滤：`TAG-B` 从未离开 broker**
 
 ```
 [filter-tag] 已发送 TAG-A ×3 与 TAG-B ×3
@@ -303,7 +303,7 @@ docker run --rm apache/rocketmq:4.9.7 sh mqadmin resetOffsetByTime \
 [filter-tag] 依据：tag 的 hashcode 就存在 ConsumeQueue 的 20 字节定长条目里，只读索引即可判断
 ```
 
-**七｜SQL92 过滤：开关关闭时直接失败**
+**九｜SQL92 过滤：开关关闭时直接失败**
 
 ```
 [filter-sql] 已发送 10 条，用户属性 a=1..10，过滤条件是 a > 5
@@ -318,7 +318,7 @@ docker run --rm apache/rocketmq:4.9.7 sh mqadmin resetOffsetByTime \
 > 条件的**全部**消息」，不要写死数字。重启后第一次发送可能撞上
 > `RemotingTooMuchRequestException: sendDefaultImpl call timeout`（客户端 3s 超时），再跑一次即正常。
 
-**八｜延迟档位：标称 vs 实测（`delay`）**
+**十｜延迟档位：标称 vs 实测（`delay`）**
 
 ```
 [delay] 发送 level-1   标称延迟=  1000ms  → 实测延迟=1113ms
@@ -330,7 +330,7 @@ docker run --rm apache/rocketmq:4.9.7 sh mqadmin resetOffsetByTime \
 
 「未收到」的观察窗口只有几十秒，而这两个级别实际是 2 小时——落点与差值见下一条。
 
-**八｜磁盘侧：超范围级别落在哪，差值多大**
+**十｜磁盘侧：超范围级别落在哪，差值多大**
 
 ```
 queueId=0   属性DELAY=1   差值=1000 ms    (0.0003 h)
@@ -343,7 +343,7 @@ queueId=17  属性DELAY=18  差值=7200000 ms (2.0000 h)
 17 + 1 = 第 18 级，也正是发送 level-19 / level-99 那两条的落点；差值恒为 7200000ms。
 第三字段（投递时间戳）减消息存储时间戳就是每条延迟消息的实际延迟。
 
-**九｜事务消息的三条路径与回查（`tx`）**
+**十一｜事务消息的三条路径与回查（`tx`）**
 
 ```
 [tx] 发送 tx-commit    localTransactionState=COMMIT_MESSAGE   sendStatus=SEND_OK
@@ -362,7 +362,7 @@ queueId=17  属性DELAY=18  差值=7200000 ms (2.0000 h)
 [tx] t+19183ms checkLocalTransaction(tx-unknown) 被回查 -> COMMIT_MESSAGE
 ```
 
-**九｜半消息的索引状态与落盘属性**
+**十一｜半消息的索引状态与落盘属性**
 
 ```
 RMQ_SYS_TRANS_HALF_TOPIC  queueId=0  共 4 条（物理偏移 9764 / 10042 / 10586 / 11135，第三字段全为 0）
